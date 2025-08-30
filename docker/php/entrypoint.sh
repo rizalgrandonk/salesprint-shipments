@@ -1,26 +1,68 @@
-#!/usr/bin/env bash
-set -e
+#!/bin/bash
 
-# make sure storage and bootstrap/cache are writable
-chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache || true
+main() {
+    if [ "$IS_WORKER" = "true" ]; then
+        exec "$@"
+    else
+        prepare_file_permissions
+        run_npm_build
+        prepare_storage
+        wait_for_db
+        run_migrations
+        optimize_app
+        run_server "$@"
+    fi
+}
 
-# if vendor not present, install composer deps
-if [ ! -d "/var/www/html/vendor" ]; then
-  composer install --no-interaction --prefer-dist --optimize-autoloader
-fi
+prepare_file_permissions() {
+    chmod a+x ./artisan
+}
 
+run_npm_build() {
+    echo "Installing NPM dependencies"
+    if [ -f "package.json" ]; then
+        echo "Running NPM clean install"
+        npm ci
 
-# generate key if missing
-if [ -f "/var/www/html/artisan" ]; then
-  if ! grep -q "APP_KEY=" /var/www/html/.env || [ -z "$(grep -Po '(?<=APP_KEY=).*' /var/www/html/.env)" ]; then
-    php artisan key:generate --ansi || true
-  fi
-  # run pending migrations (optional in prod but handy for home use)
-  php artisan migrate --force || true
-  php artisan config:cache || true
-  php artisan route:cache || true
-fi
+        echo "Running NPM build"
+        npm run build
+    else
+        echo "No package.json found, skipping NPM build"
+    fi
+}
 
+prepare_storage() {
+    # Create required directories for Laravel
+    mkdir -p /usr/share/nginx/html/storage/framework/cache/data
+    mkdir -p /usr/share/nginx/html/storage/framework/sessions
+    mkdir -p /usr/share/nginx/html/storage/framework/views
 
-# drop privileges and exec
-exec su-exec www-data "$@"
+    # Set permissions for the storage directory
+    chown -R www-data:www-data /usr/share/nginx/html/storage
+    chmod -R 775 /usr/share/nginx/html/storage
+
+    # Ensure the symlink exists
+    php artisan storage:link
+}
+
+wait_for_db() {
+    echo "Waiting for DB to be ready"
+    until ./artisan migrate:status 2>&1 | grep -q -E "(Migration table not found|Migration name)"; do
+        sleep 1
+    done
+}
+
+run_migrations() {
+    ./artisan migrate
+}
+
+optimize_app() {
+    ./artisan optimize:clear
+    ./artisan optimize
+}
+
+run_server() {
+    exec /usr/local/bin/docker-php-entrypoint "$@"
+}
+
+main "$@"

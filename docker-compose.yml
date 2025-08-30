@@ -1,57 +1,97 @@
-version: '3.8'
-
 services:
-  salesprint_backend:
-    build:
-      context: .
-      dockerfile: docker/php/Dockerfile
-    image: salesprint_shipments:latest
-    container_name: salesprint_shipments
-    restart: unless-stopped
-    working_dir: /var/www/html
-    volumes:
-      - ./:/var/www/html:delegated
-      - ./docker/php/sockets:/var/run/php
-    env_file:
-      - .env
-    depends_on:
-      - db
-    networks:
-      - laravel_net
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: salesprint_shipments
+        restart: unless-stopped
+        ports:
+            - 9000:9000
+        depends_on:
+            - db
+        env_file:
+            - .env
+        volumes:
+            - storage:/usr/share/nginx/html/storage:rw
+            - public:/usr/share/nginx/html/public:rw
+        networks:
+            - laravel_net
+    
+    queue-worker:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: salesprint_shipments_queue
+        restart: unless-stopped
+        command: php artisan queue:work
+        environment:
+            IS_WORKER: "true"
+        env_file:
+            - .env
+        depends_on:
+            - db
+            - redis
+        volumes:
+            - storage:/usr/share/nginx/html/storage:rw
+            - public:/usr/share/nginx/html/public:rw
+        networks:
+            - laravel_net
+    
+    nginx:
+        image: nginx:1-alpine
+        container_name: salesprint_shipments_nginx
+        ports:
+            - 8000:80
+            - 443:443
+        volumes:
+            - ./docker/nginx/default.conf:/etc/nginx/templates/default.conf.template
+            - storage:/usr/share/nginx/html/storage:rw
+            - public:/usr/share/nginx/html/public:ro
+        networks:
+            - laravel_net
 
-  nginx:
-    image: nginx:1.25-alpine
-    container_name: salesprint_nginx
-    restart: unless-stopped
-    ports:
-      - "8080:80" # map nginx to port 8080 on host
-    volumes:
-      - ./:/var/www/html:ro
-      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./docker/nginx/certs:/etc/nginx/certs
-    depends_on:
-      - salesprint_backend
-    networks:
-      - laravel_net
-
-  db:
-    image: mariadb:10.11
-    container_name: salesprint_db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_DATABASE}
-      MYSQL_USER: ${DB_USERNAME}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - db_data:/var/lib/mysql
-    networks:
-      - laravel_net
+    db:
+        image: mariadb:10.11
+        container_name: salesprint_shipments_db
+        ports:
+            - 6033:3306
+        restart: unless-stopped
+        env_file:
+            - .env.docker
+        environment:
+            MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+            MYSQL_DATABASE: ${DB_DATABASE}
+            MYSQL_USER: ${DB_USERNAME}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+        volumes:
+            - db-data:/var/lib/mysql
+        networks:
+            - laravel_net
+    
+    redis:
+        image: bitnami/redis:7.2
+        container_name: salesprint_shipments_redis
+        platform: linux/amd64
+        ports:
+            - 6379:6379
+        restart: always
+        volumes:
+            - redis-data:/bitnami/redis/data
+        env_file:
+            - .env.docker
+        environment:
+            - ALLOW_EMPTY_PASSWORD=no
+            - REDIS_PASSWORD=${REDIS_PASSWORD}
+            - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+        networks:
+            - laravel_net
 
 volumes:
-  db_data:
-
+    storage:
+    public:
+    db-data:
+    redis-data:
 
 networks:
-  laravel_net:
-    driver: bridge
+    laravel_net:
+        driver: bridge
