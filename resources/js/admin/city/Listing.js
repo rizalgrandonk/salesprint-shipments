@@ -23,6 +23,17 @@ Vue.component('city-listing', {
                 
                 this.populateLoading = false;
             }
+        },
+        
+        async populateDistricts(url) {
+            try {
+                await axios.post(url);
+                this.$notify({ type: 'success', text: 'Districts populated successfully!' });
+                this.loadData(); // reload table after success
+            } catch (e) {
+                console.log(e);
+                this.$notify({ type: 'error', text: 'Failed to populate Districts!' });
+            }
         }
     }
 });

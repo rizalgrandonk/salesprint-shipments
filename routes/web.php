@@ -111,6 +111,8 @@ Route::middleware(['auth:' . config('admin-auth.defaults.guard'), 'admin'])->gro
             Route::get('/create', 'CitiesController@create')->name('create');
             Route::post('/populate', 'CitiesController@populate')->name('populate');
             Route::post('/', 'CitiesController@store')->name('store');
+            Route::post('/{city}/populate_districts', 'CitiesController@populate_districts')
+                ->name('populate_districts');
             Route::get('/{city}/edit', 'CitiesController@edit')->name('edit');
             Route::post('/bulk-destroy', 'CitiesController@bulkDestroy')->name('bulk-destroy');
             Route::post('/{city}', 'CitiesController@update')->name('update');

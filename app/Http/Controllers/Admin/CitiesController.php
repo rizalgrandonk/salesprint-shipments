@@ -10,6 +10,7 @@ use App\Http\Requests\Admin\City\StoreCity;
 use App\Http\Requests\Admin\City\UpdateCity;
 use App\Jobs\PopulateCitiesJob;
 use App\Models\City;
+use App\Models\District;
 use App\Models\Province;
 use Brackets\AdminListing\Facades\AdminListing;
 use Exception;
@@ -44,7 +45,16 @@ class CitiesController extends Controller
             ['id', 'province_id', 'province', 'city_id', 'city_name'],
 
             // set columns to searchIn
-            ['id', 'province_id', 'province', 'city_id', 'city_name']
+            ['id', 'province_id', 'province', 'city_id', 'city_name'],
+
+            function ($query) {
+                $query->addSelect('cities.*');
+                $query->addSelect([
+                    'has_districts' => DB::raw(
+                        'EXISTS(SELECT 1 FROM districts WHERE districts.city_id = cities.city_id) as has_districts'
+                    )
+                ]);
+            }
         );
 
         if ($request->ajax()) {
@@ -197,5 +207,53 @@ class CitiesController extends Controller
         return redirect()
             ->route('admin/cities/index')
             ->withSuccess(__('Populate cities is started!'));
+    }
+
+    public function populate_districts(Request $request, City $city)
+    {
+        try {
+            $res = Http::retry(3, 1000)->withHeaders([
+                'Key' => env('RAJAONGKIR_API_KEY', ''),
+            ])->get(
+                env(
+                    'RAJAONGKIR_BASE_URL',
+                    'https://rajaongkir.komerce.id/api/v1'
+                ) . '/destination/district/' . $city->city_id
+            );
+
+            if ($res->failed()) {
+                throw $res->error();
+            }
+
+            $data = $res->json();
+            $listDistricts = $data['data'];
+
+            $dataToUpsert = array_map(function ($val) use ($city) {
+                return [
+                    'province' => $city->province,
+                    'province_id' => $city->province_id,
+                    'city_id' => $city->city_id,
+                    'city_name' => $city->city_name,
+                    'district_id' => $val['id'],
+                    'district_name' => $val['name'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }, $listDistricts);
+
+            District::upsert(
+                $dataToUpsert,
+                ['district_id'],
+                ['province', 'province_id', 'city_name', 'city_id', 'district_name', 'updated_at'] 
+            );
+
+            return redirect()
+                ->route('admin/provinces/index')
+                ->withSuccess(__('Cities for ' . $city->city_name . ' populated successfully.'));
+
+        } catch (\Exception $e) {
+            return redirect()->route('admin/provinces/index')
+                ->withError(__('Error: ' . $e->getMessage()));
+        }
     }
 }

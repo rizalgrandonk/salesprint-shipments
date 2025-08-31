@@ -113,6 +113,7 @@ return [
             'create' => 'New City',
             'edit' => 'Edit :name',
             'populate' => 'Populate Cities',
+            'populate_districts' => 'Populate Districts',
         ],
 
         'columns' => [

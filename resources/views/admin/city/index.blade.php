@@ -110,6 +110,18 @@
                                         <td>
                                             <div class="row no-gutters">
                                                 <div class="col-auto">
+                                                    <button 
+                                                        type="button" 
+                                                        class="btn btn-sm m-b-0"
+                                                        :class="!!item.has_districts ? 'btn-warning' : 'btn-success'"
+                                                        @click="populateDistricts(item.resource_url + '/populate_districts')"
+                                                    >
+                                                        <i class="fa fa-database"></i>
+                                                        &nbsp;
+                                                        {{ trans('admin.city.actions.populate_districts') }}
+                                                    </button>
+                                                </div>
+                                                <div class="col-auto">
                                                     <a class="btn btn-sm btn-spinner btn-info" :href="item.resource_url + '/edit'" title="{{ trans('brackets/admin-ui::admin.btn.edit') }}" role="button"><i class="fa fa-edit"></i></a>
                                                 </div>
                                                 <form class="col" @submit.prevent="deleteItem(item.resource_url)">
